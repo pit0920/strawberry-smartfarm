@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strawberry Farm Pastel Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MQTT.js CDN -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #fcf6f7;
+            color: #4a4044;
+        }
+        .pastel-card {
+            background: #ffffff;
+            border: 2px solid #fce4ec;
+            box-shadow: 0 10px 25px -5px rgba(255, 182, 193, 0.2);
+            border-radius: 1.5rem;
+        }
+        .pastel-btn-active {
+            background-color: #d1fae5;
+            color: #065f46;
+            border-color: #a7f3d0;
+            box-shadow: 0 4px 14px rgba(168, 230, 207, 0.4);
+        }
+        .pastel-btn-inactive {
+            background-color: #f9fafb;
+            color: #9ca3af;
+            border-color: #f3f4f6;
+        }
+
+        /* --- 아이콘 동작 애니메이션 CSS --- */
+        @keyframes spin-fan {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .animate-spin-fan {
+            display: inline-block;
+            animation: spin-fan 1s linear infinite;
+        }
+
+        @keyframes glow-led {
+            0%, 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 3px #a7f3d0); }
+            50% { opacity: 0.5; transform: scale(1.15); filter: drop-shadow(0 0 10px #34d399); }
+        }
+        .animate-glow-led {
+            display: inline-block;
+            animation: glow-led 1.5s ease-in-out infinite;
+        }
+
+        @keyframes bounce-pump {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px) scale(1.1); }
+        }
+        .animate-bounce-pump {
+            display: inline-block;
+            animation: bounce-pump 0.8s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col justify-between">
+
+    <!-- HEADER -->
+    <header class="pastel-card p-6 md:p-8 mb-6 flex flex-col lg:flex-row justify-between items-center bg-gradient-to-r from-pink-50 to-emerald-50">
+        <div class="flex items-center space-x-4 mb-4 lg:mb-0">
+            <span class="text-4xl md:text-5xl">🍓</span>
+            <div>
+                <h1 class="text-2xl md:text-4xl font-black text-pink-700 tracking-tight">스마트 딸기 3단 재배 가든</h1>
+                <p class="text-sm md:text-base text-gray-500 mt-1 font-medium">시스템 연결 상태: <span id="connection-status" class="font-bold text-orange-500">연결 대기중...</span></p>
+            </div>
+        </div>
+        <div class="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4 w-full lg:w-auto justify-end">
+            <div id="mode-badge" class="px-6 py-3 rounded-2xl bg-pink-100 text-pink-700 text-base md:text-lg font-black shadow-sm text-center">
+                현재 모드: 자동 (AUTO)
+            </div>
+            <button onclick="toggleMode()" class="px-6 py-3 rounded-2xl bg-pink-500 hover:bg-pink-600 text-white text-base md:text-lg font-black transition-all shadow-md w-full sm:w-auto cursor-pointer">
+                모드 전환
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN GRID -->
+    <main class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        
+        <!-- 좌측: 실시간 환경 및 상태 -->
+        <section class="pastel-card p-6 md:p-8 flex flex-col justify-between space-y-6">
+            <h2 class="text-lg md:text-xl font-bold text-gray-800 flex items-center">
+                <span class="w-3.5 h-3.5 rounded-full bg-pink-400 inline-block mr-3"></span>
+                실시간 환경 및 배드 상태 현황
+            </h2>
+            
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div class="bg-pink-50/70 p-5 rounded-3xl border-2 border-pink-100 shadow-sm">
+                    <p class="text-xs md:text-sm font-bold text-gray-500 mb-1">🌡️ 온도</p>
+                    <p id="val-temp" class="text-3xl md:text-4xl font-black text-pink-600 my-1">--.-</p>
+                    <p class="text-xs text-gray-400 font-semibold">°C</p>
+                </div>
+                <div class="bg-blue-50/70 p-5 rounded-3xl border-2 border-blue-100 shadow-sm">
+                    <p class="text-xs md:text-sm font-bold text-gray-500 mb-1">💧 습도</p>
+                    <p id="val-hum" class="text-3xl md:text-4xl font-black text-blue-500 my-1">--.-</p>
+                    <p class="text-xs text-gray-400 font-semibold">%</p>
+                </div>
+                <div class="bg-amber-50/70 p-5 rounded-3xl border-2 border-amber-100 shadow-sm">
+                    <p class="text-xs md:text-sm font-bold text-gray-500 mb-1">☀️ 조도</p>
+                    <p id="val-lux" class="text-2xl md:text-3xl font-black text-amber-600 my-1 mt-2">----</p>
+                    <p class="text-xs text-gray-400 font-semibold">lx</p>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-100 pt-5">
+                <p class="text-sm font-bold text-gray-600 mb-3">현재 장치 작동 상태</p>
+                <div class="grid grid-cols-3 gap-4">
+                    <div id="status-card-pump" class="p-4 rounded-2xl border-2 border-gray-100 bg-gray-50 text-center transition-all">
+                        <span id="icon-status-pump" class="text-3xl md:text-4xl inline-block">💧</span>
+                        <p class="text-xs md:text-sm font-bold mt-1 text-gray-700">워터펌프</p>
+                        <p id="txt-state-pump" class="text-xs font-black text-gray-400 mt-1">OFF</p>
+                    </div>
+                    <div id="status-card-led" class="p-4 rounded-2xl border-2 border-gray-100 bg-gray-50 text-center transition-all">
+                        <span id="icon-status-led" class="text-3xl md:text-4xl inline-block">🌿</span>
+                        <p class="text-xs md:text-sm font-bold mt-1 text-gray-700">식물성장 LED</p>
+                        <p id="txt-state-led" class="text-xs font-black text-gray-400 mt-1">OFF</p>
+                    </div>
+                    <div id="status-card-fan" class="p-4 rounded-2xl border-2 border-emerald-200 bg-emerald-50 text-center transition-all">
+                        <span id="icon-status-fan" class="text-3xl md:text-4xl inline-block animate-spin-fan">⚙️</span>
+                        <p class="text-xs md:text-sm font-bold mt-1 text-gray-700">컴퓨터 팬</p>
+                        <p id="txt-state-fan" class="text-xs font-black text-emerald-600 mt-1">ON</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 우측: 수동 제어 패널 -->
+        <section class="pastel-card p-6 md:p-8 flex flex-col justify-between space-y-6">
+            <h2 class="text-lg md:text-xl font-bold text-gray-800 flex items-center">
+                <span class="w-3.5 h-3.5 rounded-full bg-emerald-400 inline-block mr-3"></span>
+                장치 수동 제어 패널
+            </h2>
+
+            <div class="grid grid-cols-3 gap-4 my-auto">
+                <button onclick="controlDevice('pump')" id="btn-ctrl-pump" class="p-5 md:p-6 rounded-3xl border-2 pastel-btn-inactive flex flex-col items-center justify-center transition-all cursor-pointer hover:shadow-md">
+                    <span id="icon-ctrl-pump" class="text-4xl md:text-5xl mb-2 inline-block">💧</span>
+                    <span class="text-xs md:text-sm font-bold text-gray-700">워터펌프 제어</span>
+                    <span id="label-ctrl-pump" class="text-xs mt-1 font-black text-gray-400">OFF</span>
+                </button>
+                <button onclick="controlDevice('led')" id="btn-ctrl-led" class="p-5 md:p-6 rounded-3xl border-2 pastel-btn-inactive flex flex-col items-center justify-center transition-all cursor-pointer hover:shadow-md">
+                    <span id="icon-ctrl-led" class="text-4xl md:text-5xl mb-2 inline-block">🌿</span>
+                    <span class="text-xs md:text-sm font-bold text-gray-700">식물성장 LED</span>
+                    <span id="label-ctrl-led" class="text-xs mt-1 font-black text-gray-400">OFF</span>
+                </button>
+                <button onclick="controlDevice('fan')" id="btn-ctrl-fan" class="p-5 md:p-6 rounded-3xl border-2 pastel-btn-active flex flex-col items-center justify-center transition-all cursor-pointer hover:shadow-md">
+                    <span id="icon-ctrl-fan" class="text-4xl md:text-5xl mb-2 inline-block animate-spin-fan">⚙️</span>
+                    <span class="text-xs md:text-sm font-bold text-gray-700">컴퓨터 팬 제어</span>
+                    <span id="label-ctrl-fan" class="text-xs mt-1 font-black text-emerald-700">ON</span>
+                </button>
+            </div>
+
+            <div class="bg-yellow-50 border-2 border-yellow-100 p-4 rounded-2xl text-center">
+                <p class="text-xs md:text-sm text-yellow-800 font-medium">💡 수동 제어는 상단 모드가 <b class="text-pink-600">수동 (MANUAL)</b>일 때만 동작합니다.</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 하단: 딸기 재배 일지 (최대 8장 업로드 & 클릭 시 상세보기 모달 기능) -->
+    <section class="pastel-card p-6 md:p-8 mb-6">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-4 mb-5">
+            <h2 class="text-lg md:text-xl font-bold text-gray-800 flex items-center">
+                <span class="w-3.5 h-3.5 rounded-full bg-amber-400 inline-block mr-3"></span>
+                딸기 재배 일지
+            </h2>
+            <div id="recent-photo-container" class="hidden flex items-center space-x-2 bg-pink-50 px-3 py-1.5 rounded-2xl border border-pink-200">
+                <span class="text-xs font-bold text-pink-600">최근 성장 사진:</span>
+                <img id="recent-photo-img" src="" alt="최근 딸기" class="w-8 h-8 rounded-full object-cover border-2 border-pink-400 shadow-sm">
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">기록 날짜</label>
+                <input type="date" id="diary-date" class="w-full bg-gray-50 border-2 border-gray-200 p-3 rounded-2xl text-sm text-gray-700 focus:outline-none focus:border-pink-400">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">성장 사진 첨부 (최대 8장)</label>
+                <input type="file" id="diary-images" accept="image/*" multiple onchange="handleImagePreview(event)" class="w-full bg-gray-50 border-2 border-gray-200 p-2.5 rounded-2xl text-xs text-gray-700 file:mr-4 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-pink-100 file:text-pink-700 hover:file:bg-pink-200">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">일지 제목</label>
+                <input type="text" id="diary-title" placeholder="예: 3층 수경재배 꽃대 출현 및 양액 보충" class="w-full bg-gray-50 border-2 border-gray-200 p-3 rounded-2xl text-sm text-gray-700 focus:outline-none focus:border-pink-400">
+            </div>
+        </div>
+
+        <!-- 이미지 업로드 미리보기 스크롤 영역 -->
+        <div id="preview-container" class="hidden mb-4 p-3 bg-pink-50/50 rounded-2xl border border-pink-100">
+            <p id="preview-count-text" class="text-xs font-bold text-pink-600 mb-2">선택된 사진: 0 / 8장</p>
+            <div id="preview-thumbs" class="flex space-x-3 overflow-x-auto pb-2"></div>
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-xs font-bold text-gray-500 mb-1">관수 및 생육 특이사항 내용</label>
+            <textarea id="diary-content" placeholder="오늘의 2층 토경 및 3층 수경 생육 상태, 온도/습도 관리 특이사항을 자세히 기록해 보세요..." class="w-full bg-gray-50 border-2 border-gray-200 p-4 rounded-2xl text-sm text-gray-700 h-28 focus:outline-none focus:border-pink-400"></textarea>
+        </div>
+        <div class="flex justify-end mb-6">
+            <button onclick="saveDiary()" class="px-8 py-3.5 bg-pink-500 hover:bg-pink-600 text-white text-sm font-black rounded-2xl transition-all shadow-md cursor-pointer">일지 및 사진 저장하기</button>
+        </div>
+        
+        <!-- 작성된 일지 목록 카드 -->
+        <div id="diary-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+    </section>
+
+    <!-- 일지 상세보기 팝업 모달 (Modal) -->
+    <div id="diary-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white border-2 border-pink-200 w-full max-w-3xl max-h-[90vh] rounded-3xl p-6 md:p-8 overflow-y-auto shadow-2xl flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-start border-b border-gray-100 pb-4 mb-4">
+                    <div>
+                        <span id="modal-date" class="text-xs font-black text-pink-600 bg-pink-100 px-3 py-1 rounded-full"></span>
+                        <h2 id="modal-title" class="text-xl md:text-2xl font-bold text-gray-800 mt-2"></h2>
+                    </div>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl font-bold p-1">&times;</button>
+                </div>
+                
+                <div class="mb-6">
+                    <h3 class="text-xs font-bold text-gray-400 mb-2">재배 일지 기록 내용</h3>
+                    <p id="modal-content" class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap bg-gray-50 p-4 rounded-2xl border border-gray-100"></p>
+                </div>
+
+                <div id="modal-images-section">
+                    <h3 class="text-xs font-bold text-gray-400 mb-2">업로드 사진 (<span id="modal-img-count">0</span>장)</h3>
+                    <div id="modal-images-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end mt-6 pt-4 border-t border-gray-100">
+                <button onclick="closeModal()" class="px-6 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-bold rounded-xl transition-all">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="pastel-card p-4 md:p-6 flex flex-col md:flex-row justify-between items-center text-xs text-gray-400 bg-white">
+        <div>Broker: test.mosquitto.org (Topic Prefix: jws7903/)</div>
+        <div id="last-update" class="mt-1 md:mt-0 font-medium">최근 동기화: --:--:--</div>
+    </footer>
+
+    <!-- SCRIPT -->
+  <script>
+        // mqtt-dashboard.com의 TLS 웹소켓 포트(8884) 및 경로 설정
+        const brokerUrl = 'wss://broker.hivemq.com:8884/mqtt';
+        const topicPrefix = 'jws7903/';
+        
+        let client = null;
+        let isManual = false;
+        let pumpState = false;
+        let ledState = false;
+        let fanState = true;
+        let selectedBase64Images = [];
+
+        document.getElementById('diary-date').valueAsDate = new Date();
+
+        function connectMQTT() {
+            client = mqtt.connect(brokerUrl);
+
+            client.on('connect', () => {
+                document.getElementById('connection-status').innerText = '연결됨 (CONNECTED)';
+                document.getElementById('connection-status').className = 'font-bold text-emerald-500';
+                
+                client.subscribe(topicPrefix + 'dht/temp');
+                client.subscribe(topicPrefix + 'dht/humi');
+                client.subscribe(topicPrefix + 'cds');
+            });
+
+            client.on('message', (topic, payload) => {
+                const strMsg = payload.toString();
+                const now = new Date().toLocaleTimeString();
+                document.getElementById('last-update').innerText = `최근 동기화: ${now}`;
+
+                if (topic === topicPrefix + 'dht/temp') {
+                    document.getElementById('val-temp').innerText = strMsg;
+                } else if (topic === topicPrefix + 'dht/humi') {
+                    document.getElementById('val-hum').innerText = strMsg;
+                } else if (topic === topicPrefix + 'cds') {
+                    document.getElementById('val-lux').innerText = strMsg;
+                }
+            });
+        }
+        
+        function toggleMode() {
+            isManual = !isManual;
+            const badge = document.getElementById('mode-badge');
+            badge.innerText = `현재 모드: ${isManual ? '수동 (MANUAL)' : '자동 (AUTO)'}`;
+            badge.className = isManual ? 'px-6 py-3 rounded-2xl bg-emerald-100 text-emerald-700 text-base md:text-lg font-black shadow-sm text-center' : 'px-6 py-3 rounded-2xl bg-pink-100 text-pink-700 text-base md:text-lg font-black shadow-sm text-center';
+            
+            if (client && client.connected) {
+                client.publish(topicPrefix + 'control/mode', isManual ? 'MANUAL' : 'AUTO');
+            }
+        }
+
+        function controlDevice(type) {
+            if (!isManual) {
+                alert('자동(AUTO) 모드입니다. 수동 제어를 원하시면 상단의 [모드 전환]을 눌러주세요.');
+                return;
+            }
+            if (type === 'pump') {
+                pumpState = !pumpState;
+                updateUI('pump', pumpState);
+                client.publish(topicPrefix + 'control/pump', pumpState ? '1' : '0');
+            } else if (type === 'led') {
+                ledState = !ledState;
+                updateUI('led', ledState);
+                client.publish(topicPrefix + 'control/led', ledState ? '1' : '0');
+            } else if (type === 'fan') {
+                fanState = !fanState;
+                updateUI('fan', fanState);
+                client.publish(topicPrefix + 'control/fan', fanState ? '1' : '0');
+            }
+        }
+
+        function updateUI(type, state) {
+            const btn = document.getElementById(`btn-ctrl-${type}`);
+            const lbl = document.getElementById(`label-ctrl-${type}`);
+            const statusCard = document.getElementById(`status-card-${type}`);
+            const txtState = document.getElementById(`txt-state-${type}`);
+            
+            const iconStatus = document.getElementById(`icon-status-${type}`);
+            const iconCtrl = document.getElementById(`icon-ctrl-${type}`);
+
+            let animClass = '';
+            if (type === 'pump') animClass = 'animate-bounce-pump';
+            else if (type === 'led') animClass = 'animate-glow-led';
+            else if (type === 'fan') animClass = 'animate-spin-fan';
+
+            if (state) {
+                btn.className = 'p-5 md:p-6 rounded-3xl border-2 border-emerald-300 pastel-btn-active flex flex-col items-center justify-center transition-all cursor-pointer hover:shadow-md';
+                lbl.innerText = 'ON';
+                lbl.className = 'text-xs mt-1 font-black text-emerald-700';
+
+                statusCard.className = 'p-4 rounded-2xl border-2 border-emerald-300 bg-emerald-50 text-center transition-all';
+                txtState.innerText = 'ON';
+                txtState.className = 'text-xs font-black text-emerald-600 mt-1';
+
+                iconStatus.classList.add(animClass);
+                iconCtrl.classList.add(animClass);
+            } else {
+                btn.className = 'p-5 md:p-6 rounded-3xl border-2 border-gray-100 pastel-btn-inactive flex flex-col items-center justify-center transition-all cursor-pointer hover:shadow-md';
+                lbl.innerText = 'OFF';
+                lbl.className = 'text-xs mt-1 font-black text-gray-400';
+
+                statusCard.className = 'p-4 rounded-2xl border-2 border-gray-100 bg-gray-50 text-center transition-all';
+                txtState.innerText = 'OFF';
+                txtState.className = 'text-xs font-black text-gray-400 mt-1';
+
+                iconStatus.classList.remove(animClass);
+                iconCtrl.classList.remove(animClass);
+            }
+        }
+
+        // 최대 8장 이미지 다중 선택 미리보기 처리
+        function handleImagePreview(event) {
+            const files = Array.from(event.target.files);
+            const previewContainer = document.getElementById('preview-container');
+            const previewThumbs = document.getElementById('preview-thumbs');
+            const previewCountText = document.getElementById('preview-count-text');
+
+            if (files.length > 8) {
+                alert('사진은 최대 8장까지 업로드할 수 있습니다.');
+                event.target.value = '';
+                previewContainer.classList.add('hidden');
+                selectedBase64Images = [];
+                return;
+            }
+
+            selectedBase64Images = [];
+            previewThumbs.innerHTML = '';
+
+            if (files.length === 0) {
+                previewContainer.classList.add('hidden');
+                return;
+            }
+
+            previewContainer.classList.remove('hidden');
+            previewCountText.innerText = `선택된 사진: ${files.length} / 8장`;
+
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    selectedBase64Images.push(e.target.result);
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.className = 'w-16 h-16 object-cover rounded-xl border border-pink-300 flex-shrink-0';
+                    previewThumbs.appendChild(img);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function saveDiary() {
+            const date = document.getElementById('diary-date').value;
+            const title = document.getElementById('diary-title').value;
+            const content = document.getElementById('diary-content').value;
+
+            if (!title || !content) {
+                alert('일지 제목과 내용을 입력해주세요.');
+                return;
+            }
+
+            let diaries = JSON.parse(localStorage.getItem('strawberry_diaries_v4') || '[]');
+            diaries.unshift({ date, title, content, images: selectedBase64Images });
+            localStorage.setItem('strawberry_diaries_v4', JSON.stringify(diaries));
+
+            document.getElementById('diary-title').value = '';
+            document.getElementById('diary-content').value = '';
+            document.getElementById('diary-images').value = '';
+            document.getElementById('preview-container').classList.add('hidden');
+            selectedBase64Images = [];
+
+            loadDiaries();
+        }
+
+        function loadDiaries() {
+            let diaries = JSON.parse(localStorage.getItem('strawberry_diaries_v4') || '[]');
+            const listEl = document.getElementById('diary-list');
+            listEl.innerHTML = '';
+
+            // 가장 최근 업로드된 사진 미니 아이콘 업데이트
+            const recentPhotoContainer = document.getElementById('recent-photo-container');
+            const recentPhotoImg = document.getElementById('recent-photo-img');
+            const latestPhotoEntry = diaries.find(d => d.images && d.images.length > 0);
+
+            if (latestPhotoEntry) {
+                recentPhotoImg.src = latestPhotoEntry.images[0];
+                recentPhotoContainer.classList.remove('hidden');
+            } else {
+                recentPhotoContainer.classList.add('hidden');
+            }
+
+            if (diaries.length === 0) {
+                listEl.innerHTML = '<div class="col-span-2 p-6 text-center text-gray-400 bg-gray-50 rounded-2xl">작성된 재배 일지가 없습니다. 첫 일지를 기록해 보세요!</div>';
+                return;
+            }
+
+            diaries.forEach((d, index) => {
+                const card = document.createElement('div');
+                card.className = 'bg-gray-50 border-2 border-pink-100 p-5 rounded-3xl flex flex-col justify-between space-y-3 cursor-pointer hover:border-pink-300 transition-all hover:shadow-md';
+                card.onclick = (e) => {
+                    if (e.target.tagName !== 'BUTTON') openModal(index);
+                };
+
+                let imgCountBadge = '';
+                let thumbImg = '';
+                if (d.images && d.images.length > 0) {
+                    imgCountBadge = `<span class="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full ml-2">📷 사진 ${d.images.length}장</span>`;
+                    thumbImg = `<div class="mt-2 flex space-x-2 overflow-x-auto pb-1">
+                        ${d.images.map(imgUrl => `<img src="${imgUrl}" class="w-16 h-16 object-cover rounded-xl border border-pink-200">`).join('')}
+                    </div>`;
+                }
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <div>
+                                <span class="text-xs font-black text-pink-600 bg-pink-100 px-3 py-1 rounded-full">${d.date}</span>
+                                ${imgCountBadge}
+                            </div>
+                            <button onclick="deleteDiary(event, ${index})" class="text-xs text-red-400 hover:text-red-600 font-bold p-1">삭제</button>
+                        </div>
+                        <h3 class="text-base font-bold text-gray-800 line-clamp-1">${d.title}</h3>
+                        <p class="text-xs text-gray-600 mt-1 line-clamp-2 leading-relaxed">${d.content}</p>
+                        ${thumbImg}
+                        <p class="text-[11px] text-pink-500 font-bold mt-2 text-right">클릭하여 전체 보기 &rarr;</p>
+                    </div>
+                `;
+                listEl.appendChild(card);
+            });
+        }
+
+        // 상세보기 모달 열기
+        function openModal(index) {
+            let diaries = JSON.parse(localStorage.getItem('strawberry_diaries_v4') || '[]');
+            const d = diaries[index];
+            if (!d) return;
+
+            document.getElementById('modal-date').innerText = d.date;
+            document.getElementById('modal-title').innerText = d.title;
+            document.getElementById('modal-content').innerText = d.content;
+
+            const modalImagesGrid = document.getElementById('modal-images-grid');
+            const modalImagesSection = document.getElementById('modal-images-section');
+            const modalImgCount = document.getElementById('modal-img-count');
+
+            modalImagesGrid.innerHTML = '';
+
+            if (d.images && d.images.length > 0) {
+                modalImagesSection.classList.remove('hidden');
+                modalImgCount.innerText = d.images.length;
+                d.images.forEach(imgUrl => {
+                    const img = document.createElement('img');
+                    img.src = imgUrl;
+                    img.className = 'w-full h-36 object-cover rounded-2xl border-2 border-pink-100 hover:scale-105 transition-transform shadow-sm';
+                    modalImagesGrid.appendChild(img);
+                });
+            } else {
+                modalImagesSection.classList.add('hidden');
+            }
+
+            document.getElementById('diary-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('diary-modal').classList.add('hidden');
+        }
+
+        function deleteDiary(event, index) {
+            event.stopPropagation();
+            if (confirm('이 재배 일지를 삭제하시겠습니까?')) {
+                let diaries = JSON.parse(localStorage.getItem('strawberry_diaries_v4') || '[]');
+                diaries.splice(index, 1);
+                localStorage.setItem('strawberry_diaries_v4', JSON.stringify(diaries));
+                loadDiaries();
+            }
+        }
+
+        window.onload = () => {
+            connectMQTT();
+            loadDiaries();
+            updateUI('fan', true);
+        };
+    </script>
+</body>
+</html>
